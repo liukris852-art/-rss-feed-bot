@@ -29,11 +29,12 @@ jobs:
       - name: Run RSS Script
         run: python vapesourcingRSS.py
 
-      - name: Commit RSS Feed
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@users.noreply.github.com"
-          git add comingsoon.xml state.json
-          git commit -m "Update RSS Feed [skip ci]" || echo "No changes"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+      - name: Deploy RSS to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./        # RSS 文件在仓库根目录
+          publish_branch: gh-pages
+          keep_files: true       # 保留 gh-pages 分支已有文件
+
 
