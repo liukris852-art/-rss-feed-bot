@@ -25,7 +25,7 @@ jobs:
         pip install requests beautifulsoup4
 
     - name: Run RSS Script
-      run: python coming_soon_rss.py
+      run: python vapesourcingRSS.py
 
     - name: Commit RSS Feed
       run: |
