@@ -13,28 +13,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ 拉取仓库代码
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # 2️⃣ 设置 Python 环境
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # 3️⃣ 安装依赖
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
+      # 4️⃣ 运行 RSS 抓取脚本
       - name: Run RSS Script
         run: python vapesourcingRSS.py
 
+      # 5️⃣ 部署 RSS 文件到 GitHub Pages
       - name: Deploy RSS to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v6
+        uses: peaceiris/actions-gh-pages@v6.4.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./        # RSS 文件在仓库根目录
           publish_branch: gh-pages
           keep_files: true       # 保留 gh-pages 分支已有文件
+
 
 
