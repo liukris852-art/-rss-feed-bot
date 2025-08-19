@@ -51,7 +51,7 @@ new_products = [p for p in products if p["name"] not in history_names]
 # 更新历史
 history.extend(new_products)
 # 按日期倒序排列
-history.sort(key=lambda x: x["added_date"], reverse=True)
+history.sort(key=lambda x: x.get("added_date", ""), reverse=True)
 
 # 保存历史状态
 with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -60,15 +60,16 @@ with open(STATE_FILE, "w", encoding="utf-8") as f:
 # 生成合法 RSS
 rss_items = []
 for p in history:
-    description_text = f"Price: {p['price']}"
+    description_text = f"Price: {p.get('price','')}"
     description_text = escape(description_text)  # 转义特殊字符
+    img_url = p.get('img','')  # 避免 KeyError
     item = f"""
     <item>
-      <title>{escape(p['name'])}</title>
-      <link>{p['link']}</link>
+      <title>{escape(p.get('name',''))}</title>
+      <link>{p.get('link','')}</link>
       <description>{description_text}</description>
-      <pubDate>{p['added_date']}</pubDate>
-      <enclosure url="{p['img']}" type="image/jpeg" />
+      <pubDate>{p.get('added_date','')}</pubDate>
+      {f'<enclosure url="{img_url}" type="image/jpeg" />' if img_url else ''}
     </item>
     """
     rss_items.append(item.strip())
@@ -88,3 +89,4 @@ with open(RSS_FILE, "w", encoding="utf-8") as f:
     f.write(rss_content)
 
 print(f"RSS 文件生成成功：{RSS_FILE}, 新增 {len(new_products)} 个产品")
+
