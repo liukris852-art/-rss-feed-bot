@@ -1,81 +1,93 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-from pathlib import Path
-import datetime
+from datetime import datetime
+from xml.sax.saxutils import escape
+import os
 
 # 文件路径
-rss_file = Path("comingsoon.xml")
-state_file = Path("state.json")
+RSS_FILE = "comingsoon.xml"
+STATE_FILE = "state.json"
 
-# 1. 加载历史数据
-if state_file.exists():
-    try:
-        with open(state_file, "r", encoding="utf-8") as f:
-            history = json.load(f)
-        # 只保留字典元素，防止报错
-        history = [h for h in history if isinstance(h, dict)]
-    except Exception:
-        history = []
+URL = "https://vapesourcing.com/coming-soon.html"
+
+# 获取页面内容
+headers = {"User-Agent": "Mozilla/5.0"}
+resp = requests.get(URL, headers=headers)
+resp.raise_for_status()
+soup = BeautifulSoup(resp.text, "html.parser")
+
+# 解析产品列表
+products = []
+for item in soup.select("li.product-item"):
+    name_tag = item.select_one(".product-name a")
+    img_tag = item.select_one(".product-image img")
+    price_tag = item.select_one(".price-box .price")
+    if not name_tag:
+        continue
+    name = name_tag.get_text(strip=True)
+    link = "https://vapesourcing.com" + name_tag['href']
+    img = img_tag['data-src'] if img_tag and img_tag.get('data-src') else ""
+    price = price_tag.get_text(strip=True) if price_tag else ""
+    products.append({
+        "name": name,
+        "link": link,
+        "img": img,
+        "price": price,
+        "added_date": datetime.utcnow().strftime("%Y-%m-%d")
+    })
+
+# 加载历史数据
+if os.path.exists(STATE_FILE):
+    with open(STATE_FILE, "r", encoding="utf-8") as f:
+        history = json.load(f)
 else:
     history = []
 
-# 2. 抓取页面
-url = "https://vapesourcing.com/coming-soon.html"
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-}
-resp = requests.get(url, headers=headers)
-resp.raise_for_status()
+# 找出新增产品
+history_names = {p["name"] for p in history}
+new_products = [p for p in products if p["name"] not in history_names]
 
-soup = BeautifulSoup(resp.text, "html.parser")
-products_list = soup.select("li.product-item")
-
-new_products = []
-today_str = datetime.date.today().isoformat()
-
-for li in products_list:
-    name_tag = li.select_one(".product-name a")
-    link_tag = li.select_one(".product-name a")
-    img_tag = li.select_one(".product-image img")
-    price_tag = li.select_one(".price-box .price")
-
-    if name_tag and link_tag:
-        product = {
-            "name": name_tag.get_text(strip=True),
-            "link": "https://vapesourcing.com" + link_tag.get("href", ""),
-            "image": img_tag.get("data-src") or img_tag.get("src") or "",
-            "price": price_tag.get_text(strip=True) if price_tag else "N/A",
-            "added_date": today_str
-        }
-        # 只添加历史中不存在的产品
-        if not any(h["link"] == product["link"] for h in history):
-            history.append(product)
-            new_products.append(product)
-
-# 3. 按日期排序（最新在前）
+# 更新历史
+history.extend(new_products)
+# 按日期倒序排列
 history.sort(key=lambda x: x.get("added_date", ""), reverse=True)
 
-# 4. 保存 state.json
-with open(state_file, "w", encoding="utf-8") as f:
+# 保存历史状态
+with open(STATE_FILE, "w", encoding="utf-8") as f:
     json.dump(history, f, ensure_ascii=False, indent=2)
 
-# 5. 生成 RSS 文件
-def generate_rss(products, filename):
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        f.write('<rss version="2.0"><channel>\n')
-        f.write('<title>VapeSourcing Coming Soon</title>\n')
-        f.write('<link>https://vapesourcing.com/coming-soon.html</link>\n')
-        f.write('<description>Latest VapeSourcing Coming Soon Products</description>\n')
-        for p in products:
-            f.write(f"<item>\n")
-            f.write(f"<title>{p['name']} ({p['added_date']})</title>\n")
-            f.write(f"<link>{p['link']}</link>\n")
-            f.write(f"<description>Price: {p.get('price','N/A')}<br><img src='{p.get('image','')}'/></description>\n")
-            f.write(f"</item>\n")
-        f.write("</channel></rss>\n")
+# 生成合法 RSS
+rss_items = []
+for p in history:
+    description_text = f"Price: {p.get('price','')}"
+    description_text = escape(description_text)  # 转义特殊字符
+    img_url = p.get('img','')  # 避免 KeyError
+    item = f"""
+    <item>
+      <title>{escape(p.get('name',''))}</title>
+      <link>{p.get('link','')}</link>
+      <description>{description_text}</description>
+      <pubDate>{p.get('added_date','')}</pubDate>
+      {f'<enclosure url="{img_url}" type="image/jpeg" />' if img_url else ''}
+    </item>
+    """
+    rss_items.append(item.strip())
 
-generate_rss(history, rss_file)
+rss_content = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+  <title>VapeSourcing Coming Soon</title>
+  <link>{URL}</link>
+  <description>Latest VapeSourcing Coming Soon Products</description>
+  {"".join(rss_items)}
+</channel>
+</rss>
+"""
 
-print(f"抓取完成！新增 {len(new_products)} 个产品，RSS 文件已生成。")
+with open(RSS_FILE, "w", encoding="utf-8") as f:
+    f.write(rss_content)
+
+print(f"RSS 文件生成成功：{RSS_FILE}, 新增 {len(new_products)} 个产品")
+
+
