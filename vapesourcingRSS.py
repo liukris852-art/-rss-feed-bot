@@ -62,7 +62,7 @@ for p in new_products:
                 span.decompose()
             # 只抓 Features 后面的 <p>
             features_start = False
-            for tag in detail_div.find_all(['p', 'div']):
+            for tag in detail_div.find_all(['p']):
                 text = tag.get_text(strip=True)
                 if not text:
                     continue
