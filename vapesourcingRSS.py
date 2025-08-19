@@ -1,85 +1,82 @@
 import requests
 from bs4 import BeautifulSoup
-import xml.etree.ElementTree as ET
 from datetime import datetime
-
-RSS_FILE = "feed.xml"
-BASE_URL = "https://www.vapesourcing.com"
+import xml.etree.ElementTree as ET
 
 def fetch_new_products():
-    url = f"{BASE_URL}/new-arrivals.html"
-    response = requests.get(url, timeout=10)
+    url = "https://www.vapesourcing.com/new-arrivals.html"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.vapesourcing.com/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Connection": "keep-alive"
+    }
+    response = requests.get(url, headers=headers, timeout=20)
     response.raise_for_status()
     return response.text
 
 def parse_products(html):
     soup = BeautifulSoup(html, "html.parser")
     products = []
-    for item in soup.select(".item"):
-        title_tag = item.select_one(".product-name a")
-        link_tag = item.select_one(".product-name a")
-        img_tag = item.select_one("img")
-        price_tag = item.select_one(".price")
 
-        if not (title_tag and link_tag and img_tag):
-            continue
+    for product in soup.select(".item"):  
+        title = product.select_one(".product-name a")
+        link = title["href"] if title else None
+        name = title.get_text(strip=True) if title else "No Title"
 
-        title = title_tag.get_text(strip=True)
-        link = link_tag["href"]
-        image_url = img_tag["src"].replace("/250/", "/800/")  # 高清图
-        price = price_tag.get_text(strip=True) if price_tag else "Price: N/A"
+        img = product.select_one(".product-image img")
+        image = img["src"] if img else None
 
-        # 抓取详情页 Features 部分
-        detail_html = requests.get(link, timeout=10).text
-        detail_soup = BeautifulSoup(detail_html, "html.parser")
+        price = product.select_one(".price")
+        price_text = price.get_text(strip=True) if price else "Price N/A"
 
-        features_section = detail_soup.find(string=lambda t: "Features" in t)
-        features_content = []
-        if features_section:
-            parent = features_section.find_parent()
-            for tag in parent.find_all_next(["p", "ul"], limit=5):
-                features_content.append(tag.get_text(" ", strip=True))
-
-        # 分段 <p>
-        description_parts = []
-        description_parts.append(f'<img src="{image_url}" alt="{title}" />')
-        description_parts.append(f"<p><b>{price}</b></p>")
-        for para in features_content:
-            description_parts.append(f"<p>{para}</p>")
-        description_parts.append(f'<p><a href="{link}">View Product</a></p>')
-
-        description = "\n".join(description_parts)
+        # Features 只抓后面的部分
+        features_block = product.select_one(".desc")
+        features = []
+        if features_block:
+            text_parts = features_block.get_text(separator="\n").split("\n")
+            features = [line.strip() for line in text_parts if line.strip().startswith("·")]
 
         products.append({
-            "title": title,
+            "title": name,
             "link": link,
-            "description": description
+            "image": image,
+            "price": price_text,
+            "features": features
         })
     return products
 
-def build_rss(products):
+def generate_rss(products):
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
+    ET.SubElement(channel, "title").text = "Vapesourcing New Arrivals"
+    ET.SubElement(channel, "link").text = "https://www.vapesourcing.com/new-arrivals.html"
+    ET.SubElement(channel, "description").text = "Latest products from Vapesourcing"
+    ET.SubElement(channel, "lastBuildDate").text = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
 
-    ET.SubElement(channel, "title").text = "Vape New Products Feed"
-    ET.SubElement(channel, "link").text = BASE_URL
-    ET.SubElement(channel, "description").text = "Latest vape products from vapesourcing"
-
-    for p in products:
+    for product in products:
         item = ET.SubElement(channel, "item")
-        ET.SubElement(item, "title").text = p["title"]
-        ET.SubElement(item, "link").text = p["link"]
-        ET.SubElement(item, "description").text = f"<![CDATA[{p['description']}]]>"
-        ET.SubElement(item, "pubDate").text = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        ET.SubElement(item, "title").text = product["title"]
+        ET.SubElement(item, "link").text = product["link"]
 
-    tree = ET.ElementTree(rss)
-    tree.write(RSS_FILE, encoding="utf-8", xml_declaration=True)
+        desc_parts = []
+        if product["image"]:
+            desc_parts.append(f'<img src="{product["image"]}" alt="{product["title"]}" /><br>')
+        desc_parts.append(f"<p><strong>Price:</strong> {product['price']}</p>")
+        for f in product["features"]:
+            desc_parts.append(f"<p>{f}</p>")
+        ET.SubElement(item, "description").text = "".join(desc_parts)
+
+    return ET.tostring(rss, encoding="utf-8", method="xml").decode("utf-8")
+
 
 if __name__ == "__main__":
     html = fetch_new_products()
     products = parse_products(html)
-    build_rss(products)
-    print(f"✅ RSS 已更新，包含价格 (写入 {RSS_FILE})")
+    rss_feed = generate_rss(products)
+    with open("vapesourcing.xml", "w", encoding="utf-8") as f:
+        f.write(rss_feed)
 
 
 
