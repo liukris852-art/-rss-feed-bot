@@ -48,15 +48,18 @@ else:
 history_names = {p["name"] for p in history}
 new_products = [p for p in products if p["name"] not in history_names]
 
-# 仅对新增产品抓取详情页
+# 抓取详情页（仅新增产品）
 for p in new_products:
     try:
         resp_detail = requests.get(p['link'], headers=HEADERS)
         resp_detail.raise_for_status()
         soup_detail = BeautifulSoup(resp_detail.text, "html.parser")
-        detail_div = soup_detail.select_one(".product-detail-main")
+        detail_div = soup_detail.select_one(".product-detail-main .new-product-msg")
         if detail_div:
-            # 保留 HTML 内部结构，避免信息丢失
+            # 删除折叠按钮
+            for span in detail_div.select("span.open"):
+                span.decompose()
+            # 保留 HTML 内部结构
             p['description'] = str(detail_div)
         else:
             p['description'] = ""
@@ -78,7 +81,7 @@ with open(STATE_FILE, "w", encoding="utf-8") as f:
 rss_items = []
 for p in history:
     img_url = p.get('img','')
-    description_text = f''
+    description_text = ''
     if img_url:
         description_text += f'<img src="{img_url}" alt="{escape(p.get("name",""))}" /><br>'
     description_text += f'{p.get("description","")}<br>'
@@ -109,5 +112,6 @@ with open(RSS_FILE, "w", encoding="utf-8") as f:
     f.write(rss_content)
 
 print(f"RSS 文件生成成功：{RSS_FILE}, 新增 {len(new_products)} 个产品")
+
 
 
