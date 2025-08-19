@@ -56,8 +56,8 @@ for p in new_products:
         soup_detail = BeautifulSoup(resp_detail.text, "html.parser")
         detail_div = soup_detail.select_one(".product-detail-main")
         if detail_div:
-            # 获取产品描述文字，换行用空格连接
-            p['description'] = detail_div.get_text(separator=" ", strip=True)
+            # 保留 HTML 内部结构，避免信息丢失
+            p['description'] = str(detail_div)
         else:
             p['description'] = ""
         time.sleep(1)  # 防止访问太快触发反爬虫
@@ -77,16 +77,19 @@ with open(STATE_FILE, "w", encoding="utf-8") as f:
 # 生成合法 RSS
 rss_items = []
 for p in history:
-    description_text = f"{p.get('description','')} Price: {p.get('price','')}"
-    description_text = escape(description_text)
     img_url = p.get('img','')
+    description_text = f''
+    if img_url:
+        description_text += f'<img src="{img_url}" alt="{escape(p.get("name",""))}" /><br>'
+    description_text += f'{p.get("description","")}<br>'
+    description_text += f'Price: {escape(p.get("price",""))}'
+
     item = f"""
     <item>
       <title>{escape(p.get('name',''))}</title>
       <link>{p.get('link','')}</link>
-      <description>{description_text}</description>
+      <description><![CDATA[{description_text}]]></description>
       <pubDate>{p.get('added_date','')}</pubDate>
-      {f'<enclosure url="{img_url}" type="image/jpeg" />' if img_url else ''}
     </item>
     """
     rss_items.append(item.strip())
@@ -106,4 +109,5 @@ with open(RSS_FILE, "w", encoding="utf-8") as f:
     f.write(rss_content)
 
 print(f"RSS 文件生成成功：{RSS_FILE}, 新增 {len(new_products)} 个产品")
+
 
