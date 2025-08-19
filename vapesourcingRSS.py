@@ -55,43 +55,54 @@ for p in new_products:
         resp_detail.raise_for_status()
         soup_detail = BeautifulSoup(resp_detail.text, "html.parser")
         detail_div = soup_detail.select_one(".product-detail-main .new-product-msg")
+        features_texts = []
         if detail_div:
             # 删除折叠按钮
             for span in detail_div.select("span.open"):
                 span.decompose()
-            # 保留 HTML 内部结构
-            p['description'] = str(detail_div)
+            # 只抓 Features 后面的 <p>
+            features_start = False
+            for tag in detail_div.find_all(['p', 'div']):
+                text = tag.get_text(strip=True)
+                if not text:
+                    continue
+                if 'Features' in text:
+                    features_start = True
+                    continue
+                if features_start:
+                    features_texts.append(text)
+            # 每条用 <p> 包裹
+            description_html = ""
+            if p['img']:
+                description_html += f'<p><img src="{p["img"]}" alt="{escape(p["name"])}" /></p>'
+            for ft in features_texts:
+                description_html += f'<p>{escape(ft)}</p>'
+            # 添加原网页链接
+            description_html += f'<p><a href="{p["link"]}">Click here for full details</a></p>'
+            p['description'] = description_html
         else:
             p['description'] = ""
-        time.sleep(1)  # 防止访问太快触发反爬虫
+        time.sleep(1)
     except Exception as e:
         print(f"抓取详情页失败: {p['name']}, {e}")
         p['description'] = ""
 
 # 更新历史
 history.extend(new_products)
-# 按日期倒序
 history.sort(key=lambda x: x.get("added_date", ""), reverse=True)
 
 # 保存历史状态
 with open(STATE_FILE, "w", encoding="utf-8") as f:
     json.dump(history, f, ensure_ascii=False, indent=2)
 
-# 生成合法 RSS
+# 生成 RSS
 rss_items = []
 for p in history:
-    img_url = p.get('img','')
-    description_text = ''
-    if img_url:
-        description_text += f'<img src="{img_url}" alt="{escape(p.get("name",""))}" /><br>'
-    description_text += f'{p.get("description","")}<br>'
-    description_text += f'Price: {escape(p.get("price",""))}'
-
     item = f"""
     <item>
       <title>{escape(p.get('name',''))}</title>
       <link>{p.get('link','')}</link>
-      <description><![CDATA[{description_text}]]></description>
+      <description><![CDATA[{p.get('description','')}]]></description>
       <pubDate>{p.get('added_date','')}</pubDate>
     </item>
     """
@@ -112,6 +123,8 @@ with open(RSS_FILE, "w", encoding="utf-8") as f:
     f.write(rss_content)
 
 print(f"RSS 文件生成成功：{RSS_FILE}, 新增 {len(new_products)} 个产品")
+
+
 
 
 
