@@ -33,6 +33,8 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./        # 根目录
+          publish_dir: "./"          # 发布根目录下所有文件
           publish_branch: gh-pages
-          keep_files: true
+          keep_files: true           # 保留 gh-pages 上原有文件
+          commit_message: "Update RSS and index.html [skip ci]"
+
