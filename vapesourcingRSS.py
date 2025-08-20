@@ -48,18 +48,29 @@ else:
 history_names = {p["name"] for p in history}
 new_products = [p for p in products if p["name"] not in history_names]
 
-# 仅对新增产品抓取详情页
+# 抓取详情页 Product Details + Features
+def extract_tabs(soup):
+    content_html = ""
+    tab_section = soup.select_one(".product-detail-main")
+    if not tab_section:
+        return content_html
+
+    # Product Details + Features
+    h_tags = tab_section.find_all(["h2", "h3"])
+    for h in h_tags:
+        content_html += f"<{h.name}>{escape(h.get_text(strip=True))}</{h.name}>\n"
+        for sibling in h.find_next_siblings():
+            if sibling.name in ["h2", "h3"]:
+                break
+            content_html += str(sibling)
+    return content_html
+
 for p in new_products:
     try:
         resp_detail = requests.get(p['link'], headers=HEADERS)
         resp_detail.raise_for_status()
         soup_detail = BeautifulSoup(resp_detail.text, "html.parser")
-        detail_div = soup_detail.select_one(".product-detail-main")
-        if detail_div:
-            # 保留 HTML 内部结构，避免信息丢失
-            p['description'] = str(detail_div)
-        else:
-            p['description'] = ""
+        p['description'] = extract_tabs(soup_detail)
         time.sleep(1)  # 防止访问太快触发反爬虫
     except Exception as e:
         print(f"抓取详情页失败: {p['name']}, {e}")
@@ -67,7 +78,6 @@ for p in new_products:
 
 # 更新历史
 history.extend(new_products)
-# 按日期倒序
 history.sort(key=lambda x: x.get("added_date", ""), reverse=True)
 
 # 保存历史状态
@@ -80,7 +90,9 @@ for p in history:
     img_url = p.get('img','')
     description_text = f''
     if img_url:
-        description_text += f'<img src="{img_url}" alt="{escape(p.get("name",""))}" /><br>'
+        # 高清图片
+        hd_img_url = img_url.replace("/250/", "/600/")  # 替换成更高清的尺寸
+        description_text += f'<img src="{hd_img_url}" alt="{escape(p.get("name",""))}" /><br>'
     description_text += f'{p.get("description","")}<br>'
     description_text += f'Price: {escape(p.get("price",""))}'
 
